@@ -1,6 +1,5 @@
----
 
-# ⚡ RayBuster
+#  RayBuster
 
 **An edge-native, physics-based WAF that drops bots before they hit your origin.**
 
