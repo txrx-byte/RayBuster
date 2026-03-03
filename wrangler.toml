@@ -12,12 +12,14 @@ database_id = "YOUR_D1_DATABASE_ID_HERE"
 # Analytics Engine Binding (for high-volume metrics)
 [[analytics_engine_datasets]]
 binding = "ANALYTICS"
-dataset = "sentinel_metrics"
+dataset = "raybuster_metrics"
 
 # Environment Variables
 [vars]
-ADMIN_TOKEN = "CHANGE_THIS_TO_A_SECURE_RANDOM_STRING"
+ADMIN_TOKEN = "GENERATE_A_SECURE_RANDOM_STRING_AND_NEVER_COMMIT_TO_GIT"
 CF_ACCOUNT_ID = "YOUR_CLOUDFLARE_ACCOUNT_ID_HERE"
+ENCRYPTION_KEY = "GENERATE_A_SECURE_32_BYTE_BASE64_ENCODED_AES_KEY"
+ADMIN_IP_ALLOWLIST = ""
 
 # Module Rules (for importing .html files as strings)
 [[rules]]

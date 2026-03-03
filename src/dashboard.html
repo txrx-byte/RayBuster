@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="X-Frame-Options" content="DENY">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://api.cloudflare.com;">
-    <title>Sentinel // Security Operations Dashboard</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com; connect-src 'self' https://api.cloudflare.com https://fonts.gstatic.com;">
+    <title>Raybuster // Security Operations Dashboard</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
@@ -173,7 +173,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                     </svg>
                 </div>
-                <h1 class="text-xl font-bold text-white">SENTINEL<span class="text-[var(--color-primary)]">.AI</span></h1>
+                <h1 class="text-xl font-bold text-white">RAYBUSTER<span class="text-[var(--color-primary)]">.AI</span></h1>
             </div>
             
             <nav class="space-y-2" role="navigation" aria-label="Main navigation">
@@ -391,7 +391,7 @@
 
     <script>
         /**
-         * Sentinel Dashboard - Production JavaScript
+         * Raybuster Dashboard - Production JavaScript
          * Handles API communication, UI updates, and user interactions
          */
         (function() {
@@ -401,7 +401,7 @@
             const urlParams = new URLSearchParams(window.location.search);
             const CONFIG = {
                 API_BASE: '',
-                AUTH_TOKEN: urlParams.get('token') || localStorage.getItem('sentinel_token') || '',
+                AUTH_TOKEN: urlParams.get('token') || localStorage.getItem('raybuster_token') || '',
                 REFRESH_INTERVAL: 5000,
                 MAX_ROWS: 100
             };
@@ -462,8 +462,6 @@
                 
                 let url = `${CONFIG.API_BASE}${endpoint}`;
                 if (CONFIG.AUTH_TOKEN) {
-                    const separator = url.includes('?') ? '&' : '?';
-                    url += `${separator}token=${CONFIG.AUTH_TOKEN}`;
                     headers['Authorization'] = `Bearer ${CONFIG.AUTH_TOKEN}`;
                 }
                 
@@ -476,7 +474,7 @@
                     if (response.status === 401) {
                         showToast('Authentication failed. Please re-login.', 'error');
                         CONFIG.AUTH_TOKEN = '';
-                        localStorage.removeItem('sentinel_token');
+                        localStorage.removeItem('raybuster_token');
                         throw new Error('Unauthorized');
                     }
                     
@@ -562,7 +560,7 @@
                     elements.threatTableBody.innerHTML = `
                         <tr>
                             <td colspan="8" class="p-8 text-center text-red-400">
-                                Failed to load threat data. <button onclick="window.Sentinel.refresh()" class="text-[var(--color-primary)] underline">Retry</button>
+                                Failed to load threat data. <button onclick="window.Raybuster.refresh()" class="text-[var(--color-primary)] underline">Retry</button>
                             </td>
                         </tr>
                     `;
@@ -584,14 +582,17 @@
                 elements.threatTableBody.innerHTML = state.anomalies.map(row => `
                     <tr class="table-row border-b border-[var(--color-border)]">
                         <td class="p-4 mono text-xs text-gray-400">${formatTime(row.created_at)}</td>
-                        <td class="p-4 mono text-sm text-white">${row.ip_raw}</td>
+                        <td class="p-4 mono text-sm text-white" data-encrypted-ip="${row.ip_encrypted}" data-ip-iv="${row.ip_iv}">Encrypted</td>
                         <td class="p-4 text-sm text-gray-400 hide-mobile">${row.country_code || 'XX'}</td>
                         <td class="p-4 mono text-sm text-gray-400">${row.colo_code || 'UNK'}</td>
                         <td class="p-4 mono text-sm ${row.tcp_rtt < 50 ? 'text-red-400' : 'text-gray-400'}">${row.tcp_rtt}ms</td>
                         <td class="p-4 mono text-sm ${row.app_rtt > 800 ? 'text-orange-400' : 'text-gray-400'}">${row.app_rtt || '--'}ms</td>
                         <td class="p-4">${formatVerdict(row.verdict)}</td>
                         <td class="p-4">
-                            <button onclick="window.Sentinel.blockIP('${row.ip_raw}')" class="text-xs bg-red-900/50 hover:bg-red-900 text-red-400 px-3 py-1 rounded transition-colors">
+                            <button onclick="window.Raybuster.decryptIpAndDisplay(this)" class="text-xs bg-blue-900/50 hover:bg-blue-900 text-blue-400 px-3 py-1 rounded transition-colors mr-2">
+                                Decrypt IP
+                            </button>
+                            <button onclick="window.Raybuster.blockEncryptedIp(this)" class="text-xs bg-red-900/50 hover:bg-red-900 text-red-400 px-3 py-1 rounded transition-colors">
                                 Block IP
                             </button>
                         </td>
@@ -683,6 +684,60 @@
                 );
             }
 
+            async function blockEncryptedIp(buttonElement) {
+                const tdElement = buttonElement.closest('td');
+                const encryptedIpTd = tdElement.previousElementSibling.previousElementSibling.previousElementSibling.previousElementSibling.previousElementSibling.previousElementSibling; // IP Address TD
+                const encryptedIp = encryptedIpTd.dataset.encryptedIp;
+                const iv = encryptedIpTd.dataset.ipIv;
+
+                if (!encryptedIp || !iv) {
+                    showToast('Error: Encrypted IP or IV not found.', 'error');
+                    return;
+                }
+
+                try {
+                    const response = await apiCall('/api/decrypt-ip', {
+                        method: 'POST',
+                        body: JSON.stringify({ encryptedIp, iv })
+                    });
+                    const decryptedIp = response.decryptedIp;
+                    blockIP(decryptedIp);
+                } catch (e) {
+                    showToast('Failed to decrypt IP for blocking', 'error');
+                }
+            }
+
+            async function decryptIpAndDisplay(buttonElement) {
+                const tdElement = buttonElement.closest('td');
+                const encryptedIpTd = tdElement.previousElementSibling.previousElementSibling.previousElementSibling.previousElementSibling.previousElementSibling.previousElementSibling; // IP Address TD
+                const encryptedIp = encryptedIpTd.dataset.encryptedIp;
+                const iv = encryptedIpTd.dataset.ipIv;
+
+                if (!encryptedIp || !iv) {
+                    showToast('Error: Encrypted IP or IV not found.', 'error');
+                    return;
+                }
+
+                buttonElement.disabled = true;
+                buttonElement.textContent = 'Decrypting...';
+
+                try {
+                    const response = await apiCall('/api/decrypt-ip', {
+                        method: 'POST',
+                        body: JSON.stringify({ encryptedIp, iv })
+                    });
+                    const decryptedIp = response.decryptedIp;
+                    encryptedIpTd.textContent = decryptedIp;
+                    showToast('IP Decrypted!', 'success');
+                    // Optionally, remove or hide the decrypt button after successful decryption
+                    buttonElement.remove();
+                } catch (e) {
+                    showToast('Failed to decrypt IP', 'error');
+                    buttonElement.disabled = false;
+                    buttonElement.textContent = 'Decrypt IP';
+                }
+            }
+
             async function autoMitigate() {
                 if (state.isMitigating) return;
                 
@@ -695,12 +750,29 @@
                         elements.mitigateBtn.textContent = 'MITIGATING...';
                         
                         try {
-                            const ips = state.anomalies.map(a => a.ip_raw);
-                            await apiCall('/api/blocklist/bulk', {
-                                method: 'POST',
-                                body: JSON.stringify({ identifiers: ips })
-                            });
-                            showToast(`Blocked ${ips.length} threats successfully`, 'success');
+                            // We need to decrypt each IP before sending to blocklist bulk API
+                            const ipsToBlock = [];
+                            for (const anomaly of state.anomalies) {
+                                if (anomaly.ip_encrypted && anomaly.ip_iv) {
+                                    const response = await apiCall('/api/decrypt-ip', {
+                                        method: 'POST',
+                                        body: JSON.stringify({ encryptedIp: anomaly.ip_encrypted, iv: anomaly.ip_iv })
+                                    });
+                                    ipsToBlock.push(response.decryptedIp);
+                                } else {
+                                    console.warn('Skipping anomaly without encrypted IP for auto-mitigation', anomaly);
+                                }
+                            }
+
+                            if (ipsToBlock.length > 0) {
+                                await apiCall('/api/blocklist/bulk', {
+                                    method: 'POST',
+                                    body: JSON.stringify({ identifiers: ipsToBlock, type: 'IP' })
+                                });
+                                showToast(`Blocked ${ipsToBlock.length} threats successfully`, 'success');
+                            } else {
+                                showToast('No encrypted IPs found to block.', 'warning');
+                            }
                             fetchAnomalies();
                         } catch (e) {
                             showToast('Mitigation failed', 'error');
@@ -829,10 +901,12 @@
                 refresh();
                 
                 // Expose public methods
-                window.Sentinel = {
+                window.Raybuster = {
                     refresh,
-                    blockIP,
-                    autoMitigate
+                    blockIP: blockIP, // Keep the old blockIP for manual blocking by raw IP if needed
+                    autoMitigate,
+                    decryptIpAndDisplay,
+                    blockEncryptedIp
                 };
                 
                 showToast('Dashboard initialized', 'success');

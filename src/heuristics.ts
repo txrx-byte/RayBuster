@@ -20,13 +20,19 @@ export interface Verdict {
 
 // Known High-Latency Networks (Starlink, Mobile Carriers with high jitter)
 const HIGH_LATENCY_ASNS = new Set([
-  14593, // Starlink
+  14593,  // Starlink
   132203, // Starlink
+  394362, // Starlink
+  27277,  // Starlink
+  393282, // Starlink
+  262589, // Starlink
+  12715,  // HughesNet
+  3257,   // GTT Communications (can have high jitter/satellite paths)
 ]);
 
-const SPEED_OF_LIGHT_FIBER_KM_PER_MS = 200; // ~200,000 km/s in fiber optic cables
-const DEFAULT_MIN_RTT = 5;
-const SAFETY_MARGIN = 0.6;
+const SPEED_OF_LIGHT_FIBER_KM_PER_MS = 200; 
+const DEFAULT_MIN_RTT = 3; 
+const SAFETY_MARGIN = 0.5;
 
 /**
  * Calculates the Great Circle distance (in kilometers) between two coordinates.
@@ -79,23 +85,27 @@ export function analyzePhysics(data: TelemetryData): Verdict {
   const physicalFloor = minExpectedRtt * margin;
 
   // 3. Check: Impossible Travel
-  // Support HTTP/3 where tcpRtt is 0 by checking appRtt
-  const checkRtt = data.tcpRtt > 0 ? data.tcpRtt : data.appRtt;
+  // Support HTTP/3 where tcpRtt is 0 by checking appRtt (minus the 500ms timeout)
+  let checkRtt = data.tcpRtt;
+  if (checkRtt <= 0 && data.appRtt > 500) {
+    checkRtt = data.appRtt - 500;
+  }
+
   if (checkRtt > 0 && checkRtt < physicalFloor) {
     return {
       status: 'ANOMALY',
-      reason: `IMPOSSIBLE_TRAVEL: ${data.colo} RTT ${checkRtt}ms < physical floor ${physicalFloor.toFixed(1)}ms`,
+      reason: `IMPOSSIBLE_TRAVEL: ${data.colo} RTT ${checkRtt.toFixed(1)}ms < physical floor ${physicalFloor.toFixed(1)}ms`,
       confidence: 'HIGH'
     };
   }
 
   // 4. Check: Execution Profiling (App vs TCP RTT Ratio)
-  const appThreshold = isStarlink ? 2500 : 1000; 
+  const appThreshold = isStarlink ? 3500 : 2500; 
   
-  if (data.tcpRtt > 0 && data.tcpRtt < 100 && data.appRtt > appThreshold) {
+  if (data.tcpRtt > 0 && data.tcpRtt < 150 && data.appRtt > appThreshold) {
     const deltaRatio = data.appRtt / data.tcpRtt;
     
-    if (deltaRatio > 40) {
+    if (deltaRatio > 60) {
       return {
         status: 'BOT',
         reason: `HEADLESS_SIGNATURE: Ratio ${deltaRatio.toFixed(1)}x exceeding limit`,

@@ -6,8 +6,9 @@
 CREATE TABLE IF NOT EXISTS telemetry (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ray_id TEXT NOT NULL,           -- Cloudflare Ray ID (unique per request)
-    ip_raw TEXT NOT NULL,           -- Raw IP address (for WAF blocking)
-    ip_hash TEXT,                   -- Hashed IP (for privacy/GDPR compliance)
+    ip_encrypted TEXT NOT NULL,     -- Encrypted IP address
+    ip_iv TEXT NOT NULL,            -- Initialization Vector for IP encryption
+    ip_hash TEXT,                   -- Hashed IP (for privacy/GDPR compliance and faster lookups)
     country_code TEXT,              -- Claimed country code
     colo_code TEXT,                 -- Cloudflare Edge datacenter code
     asn INTEGER,                    -- Autonomous System Number
@@ -20,7 +21,7 @@ CREATE TABLE IF NOT EXISTS telemetry (
 
 -- Indexes for fast lookups
 CREATE INDEX IF NOT EXISTS idx_ray ON telemetry(ray_id);
-CREATE INDEX IF NOT EXISTS idx_ip ON telemetry(ip_raw);
+CREATE INDEX IF NOT EXISTS idx_ip_hash ON telemetry(ip_hash); -- Updated from ip_raw
 CREATE INDEX IF NOT EXISTS idx_created ON telemetry(created_at);
 CREATE INDEX IF NOT EXISTS idx_verdict ON telemetry(verdict);
 
@@ -28,7 +29,7 @@ CREATE INDEX IF NOT EXISTS idx_verdict ON telemetry(verdict);
 -- Stores IPs/ASNs that have been confirmed malicious
 CREATE TABLE IF NOT EXISTS blocklist (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    identifier TEXT NOT NULL,       -- IP address, CIDR, or ASN
+    identifier TEXT NOT NULL,       -- Hashed IP address, CIDR, or ASN (hashed if IP)
     identifier_type TEXT NOT NULL,  -- 'IP', 'CIDR', 'ASN'
     reason TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

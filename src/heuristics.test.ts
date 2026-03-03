@@ -31,7 +31,7 @@ describe('Heuristics Engine', () => {
       country: 'US',
       colo: 'EWR',
       tcpRtt: 20,
-      appRtt: 1200 // > 800ms
+      appRtt: 3000 // > 2500ms threshold
     });
     expect(result.status).toBe('BOT');
     expect(result.reason).toContain('HEADLESS_SIGNATURE');
