@@ -115,7 +115,7 @@ async function hashIp(ip: string, salt: string): Promise<string> {
 
 // --- POW UTILITIES ---
 
-const POW_DIFFICULTY = 8;
+const POW_DIFFICULTY = 6;
 
 async function generatePoWChallenge(ip: string, rayId: string, secret: string): Promise<string> {
   const nonce = `${ip}|${rayId}|${Date.now()}`;

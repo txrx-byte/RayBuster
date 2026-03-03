@@ -16,9 +16,7 @@ dataset = "raybuster_metrics"
 
 # Environment Variables
 [vars]
-ADMIN_TOKEN = "GENERATE_A_SECURE_RANDOM_STRING_AND_NEVER_COMMIT_TO_GIT"
 CF_ACCOUNT_ID = "YOUR_CLOUDFLARE_ACCOUNT_ID_HERE"
-ENCRYPTION_KEY = "GENERATE_A_SECURE_32_BYTE_BASE64_ENCODED_AES_KEY"
 ADMIN_IP_ALLOWLIST = ""
 
 # Module Rules (for importing .html files as strings)
@@ -28,4 +26,7 @@ globs = ["**/*.html"]
 fallthrough = true
 
 # Secrets (set via `wrangler secret put`)
-# - CF_API_TOKEN: Cloudflare API token with Analytics Engine read permissions
+# - ADMIN_TOKEN: Secure random string for admin access and token signing.
+# - CF_API_TOKEN: Cloudflare API token with Analytics Engine read permissions.
+# - ENCRYPTION_KEY: Base64 encoded 32-byte AES key for IP encryption.
+# - IP_HASHING_SALT: Salt for IP hashing in telemetry logs.
