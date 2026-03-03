@@ -84,7 +84,7 @@ export function analyzePhysics(data: TelemetryData): Verdict {
   }
 
   // 4. Check: Execution Profiling (App vs TCP RTT Ratio)
-  const appThreshold = isStarlink ? 3500 : 2500; 
+  const appThreshold = isStarlink ? 4000 : 3000; 
   
   if (data.tcpRtt > 0 && data.tcpRtt < 150 && data.appRtt > appThreshold) {
     const deltaRatio = data.appRtt / data.tcpRtt;
@@ -99,7 +99,7 @@ export function analyzePhysics(data: TelemetryData): Verdict {
   }
 
   // 5. Check: Extreme App Latency
-  const maxLeeway = isStarlink ? 10000 : 5000;
+  const maxLeeway = isStarlink ? 12000 : 6000;
   if (data.appRtt > maxLeeway) {
     return {
       status: 'ANOMALY',

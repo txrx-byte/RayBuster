@@ -38,7 +38,7 @@ export const testCases: TestCase[] = [
   // --- Execution Profiling ---
   {
     description: 'should flag headless browsers (low TCP RTT, high App RTT)',
-    input: { ip: '1.2.3.4', country: 'US', colo: 'EWR', tcpRtt: 20, appRtt: 3000 },
+    input: { ip: '1.2.3.4', country: 'US', colo: 'EWR', tcpRtt: 20, appRtt: 3100 },
     expected: { status: 'BOT', reason: 'HEADLESS_SIGNATURE' },
   },
   {
@@ -54,18 +54,18 @@ export const testCases: TestCase[] = [
   {
     description: 'should pass with a high but acceptable RTT ratio',
     input: { ip: '1.2.3.4', country: 'US', colo: 'EWR', tcpRtt: 100, appRtt: 5000 },
-    expected: { status: 'ANOMALY', reason: 'EXCESSIVE_LATENCY' },
+    expected: { status: 'CLEAN' },
   },
 
   // --- Latency Checks ---
   {
     description: 'should flag excessively high app latency',
-    input: { ip: '1.2.3.4', country: 'US', colo: 'EWR', tcpRtt: 200, appRtt: 6000 },
+    input: { ip: '1.2.3.4', country: 'US', colo: 'EWR', tcpRtt: 200, appRtt: 6100 },
     expected: { status: 'ANOMALY', reason: 'EXCESSIVE_LATENCY' },
   },
   {
     description: 'should flag excessively high app latency on Starlink',
-    input: { ip: '1.2.3.4', country: 'US', colo: 'EWR', tcpRtt: 250, appRtt: 11000, asn: 14593 },
+    input: { ip: '1.2.3.4', country: 'US', colo: 'EWR', tcpRtt: 250, appRtt: 12100, asn: 14593 },
     expected: { status: 'ANOMALY', reason: 'EXCESSIVE_LATENCY' },
   },
   {

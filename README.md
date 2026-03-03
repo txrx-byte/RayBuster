@@ -111,10 +111,32 @@ RayBuster is designed for high-availability and zero-trust security:
 *   **Computational Throttling:** Forces attackers to spend CPU cycles via PoW fallbacks.
 *   **Edge-Native:** Absorbs L7 attacks at the edge for minimal cost.
 
-### Weaknesses
-*   **First-Load Delay:** New users experience a ~500ms delay for the initial latency check.
-*   **SEO Impact:** Search crawlers that don't execute JS will be blocked. (Recommendation: Allowlist known bot IPs if SEO is critical).
-*   **API-Only Clients:** Requests without cookies or JS execution (cURL, scripts) are limited to pure TCP-based physics checks.
+### Weaknesses & Limitations
+
+*   **The "Same-City" Proxy Bypass:** Geospatial RTT auditing is most effective when there is a significant geographical distance between the user and the proxy. If an attacker uses a proxy in the same metropolitan area as the edge node (e.g., an AWS instance in Virginia hitting the Ashburn Cloudflare node), the TCP RTT will be very low and the check will likely pass. This is a fundamental limitation of this technique.
+*   **Execution Profiling vs. Mobile Devices:** The Application RTT check is designed to detect headless browsers that struggle to execute JavaScript. However, older mobile devices on slow or congested networks can also exhibit high Application RTT. The thresholds have been adjusted to be more lenient, but there is still a risk of false positives for legitimate mobile users.
+*   **Worker Memory Isolate Quirks:** The in-memory cache is highly effective at reducing D1 reads for a single user or a concentrated attack. However, it's important to remember that Cloudflare Workers run in separate isolates for each edge node. A distributed botnet attacking from many different locations will hit many different isolates, leading to initial cache misses and a spike in D1 reads.
+*   **First-Load Delay:** New users will experience a small delay (typically 500ms) on their first page load while RayBuster performs the initial latency check.
+*   **SEO Impact:** Search engine crawlers that do not execute JavaScript will be blocked. If SEO is critical, it is recommended to allowlist known bot IPs.
+
+---
+
+## 🔄 Comparison with Cloudflare Turnstile
+
+Cloudflare Turnstile is a powerful, native feature of the Cloudflare platform that also uses invisible challenges to distinguish between humans and bots. So, why use RayBuster?
+
+*   **Control & Visibility:** RayBuster gives you granular control over the security logic and full visibility into the telemetry data. You can see exactly why a user was flagged and fine-tune the heuristics to your specific needs.
+*   **Physics-Based Auditing:** RayBuster's primary innovation is the use of Geospatial RTT auditing, which is a deterministic check that Turnstile does not perform.
+*   **Customizable Actions:** With RayBuster, you can define custom actions to be taken when a bot is detected, such as issuing a PoW challenge, logging the request to a database, or redirecting the user to a different page.
+
+In summary, while Turnstile is an excellent general-purpose solution, RayBuster is a specialized tool for high-security applications that require more control, visibility, and a deterministic, physics-based approach to bot detection.
+
+---
+
+## 🚀 Future Improvements
+
+*   **Trust Score Decay:** Instead of a binary ALLOW/BLOCK, a future version of RayBuster could implement a trust score that decays over time. This would allow for more nuanced security decisions, such as issuing a PoW challenge only when the trust score falls below a certain threshold.
+*   **WebGPU / WebGL Fingerprinting:** To improve the accuracy of the headless browser detection, a future version could use WebGL or WebGPU fingerprinting to analyze the user's rendering capabilities. Headless browsers often have very different rendering characteristics than real browsers, which can be used to identify them with a high degree of confidence.
 
 ---
 
