@@ -1,5 +1,5 @@
 -- D1 Database Schema for Raybuster Platform
--- Run with: wrangler d1 execute sentinel-anomalies --file=schema.sql
+-- Run with: wrangler d1 execute raybuster-anomalies --file=schema.sql
 
 -- Telemetry/Anomaly Storage Table
 -- Only stores flagged traffic (ANOMALY, BOT) to conserve write capacity
@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS telemetry (
     ip_hash TEXT,                   -- Hashed IP (for privacy/GDPR compliance)
     country_code TEXT,              -- Claimed country code
     colo_code TEXT,                 -- Cloudflare Edge datacenter code
+    asn INTEGER,                    -- Autonomous System Number
     tcp_rtt INTEGER DEFAULT 0,      -- TCP Connection RTT (ms)
     app_rtt INTEGER DEFAULT 0,      -- Application/HTTP RTT (ms)
     verdict TEXT DEFAULT 'CLEAN',   -- CLEAN, ANOMALY, BOT

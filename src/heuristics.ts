@@ -1,47 +1,5 @@
 // src/heuristics.ts
-
-/**
- * Minimum expected TCP RTT (in milliseconds) for specific Cloudflare Colo codes.
- * These values represent the approximate speed-of-light floor for traffic 
- * originating from distant regions connecting to these specific Edge nodes.
- * 
- * In production, this should be a comprehensive matrix of Geo <-> Colo distances.
- * For this implementation, we map Colo codes to their region's typical minimum latency.
- */
-const PHYSICS_LIMITS: Record<string, number> = {
-  // North America
-  "EWR": 15,   // New York
-  "LAX": 20,   // Los Angeles
-  "ORD": 25,   // Chicago
-  "DFW": 30,   // Dallas
-  "YVR": 35,   // Vancouver
-  "MEX": 40,   // Mexico City
-  
-  // Europe
-  "LHR": 75,   // London
-  "FRA": 80,   // Frankfurt
-  "AMS": 80,   // Amsterdam
-  "CDG": 80,   // Paris
-  "MAD": 90,   // Madrid
-  
-  // Asia Pacific
-  "NRT": 140,  // Tokyo
-  "ICN": 150,  // Seoul
-  "SIN": 190,  // Singapore
-  "SYD": 160,  // Sydney
-  "BOM": 200,  // Mumbai
-  
-  // South America
-  "GRU": 150,  // Sao Paulo
-  "SCL": 120,  // Santiago
-};
-
-// Fallback minimum RTT if Colo code is unknown
-const DEFAULT_MIN_RTT = 50;
-
-// Safety margin for network variance (60% of expected minimum)
-// If RTT is below this threshold, it's physically impossible without a proxy
-const SAFETY_MARGIN = 0.6;
+import colos from './colos_slim.json';
 
 export interface TelemetryData {
   ip: string;
@@ -49,6 +7,9 @@ export interface TelemetryData {
   colo: string;
   tcpRtt: number;
   appRtt: number;
+  asn?: number;
+  lat?: number;
+  lon?: number;
 }
 
 export interface Verdict {
@@ -57,67 +18,114 @@ export interface Verdict {
   confidence?: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
+// Known High-Latency Networks (Starlink, Mobile Carriers with high jitter)
+const HIGH_LATENCY_ASNS = new Set([
+  14593, // Starlink
+  132203, // Starlink
+]);
+
+const SPEED_OF_LIGHT_FIBER_KM_PER_MS = 200; // ~200,000 km/s in fiber optic cables
+const DEFAULT_MIN_RTT = 5;
+const SAFETY_MARGIN = 0.6;
+
 /**
- * Analyzes network telemetry against physics-based constraints.
- * 
- * @param data - Telemetry tuple from Worker
- * @returns Verdict object with status and reason
+ * Calculates the Great Circle distance (in kilometers) between two coordinates.
+ */
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+/**
+ * Analyzes network telemetry against physical kinematic constraints.
  */
 export function analyzePhysics(data: TelemetryData): Verdict {
   // 1. Validate Data
-  if (data.tcpRtt <= 0) {
+  if (data.tcpRtt <= 0 && data.appRtt <= 0) {
     return { 
       status: 'CLEAN', 
-      reason: 'INVALID_DATA: TCP RTT missing or zero',
+      reason: 'INVALID_DATA: TCP and App RTT missing',
       confidence: 'LOW'
     };
   }
 
-  // 2. Get Expected Minimum RTT for this Edge Node
-  const minExpectedRtt = PHYSICS_LIMITS[data.colo] || DEFAULT_MIN_RTT;
-  const threshold = minExpectedRtt * SAFETY_MARGIN;
+  const isStarlink = data.asn ? HIGH_LATENCY_ASNS.has(data.asn) : false;
+  
+  // 2. Geospatial RTT Auditing (Dynamic Time-of-Flight)
+  let minExpectedRtt = DEFAULT_MIN_RTT;
+  
+  // If we have both the client's GeoIP coordinates and the Colo's physical coordinates
+  if (data.lat !== undefined && data.lon !== undefined) {
+    const coloCoords = (colos as Record<string, [number, number]>)[data.colo];
+    if (coloCoords) {
+      const [coloLat, coloLon] = coloCoords;
+      const distanceKm = haversine(data.lat, data.lon, coloLat, coloLon);
+      
+      // Time to travel there and back
+      const physicalRtt = (distanceKm / SPEED_OF_LIGHT_FIBER_KM_PER_MS) * 2;
+      minExpectedRtt = Math.max(DEFAULT_MIN_RTT, physicalRtt);
+    }
+  }
 
-  // 3. Check: Impossible Travel (Proxy/VPN/Spoofed Geo)
-  // If the TCP handshake is faster than physics allows for this location
-  if (data.tcpRtt < threshold) {
+  // Dynamic Margin: Starlink/Satellite has high jitter, so we use a much looser floor
+  const margin = isStarlink ? 0.2 : SAFETY_MARGIN; 
+  const physicalFloor = minExpectedRtt * margin;
+
+  // 3. Check: Impossible Travel
+  // Support HTTP/3 where tcpRtt is 0 by checking appRtt
+  const checkRtt = data.tcpRtt > 0 ? data.tcpRtt : data.appRtt;
+  if (checkRtt > 0 && checkRtt < physicalFloor) {
     return {
       status: 'ANOMALY',
-      reason: `IMPOSSIBLE_TRAVEL: ${data.colo} RTT ${data.tcpRtt}ms < physical min ${threshold}ms`,
+      reason: `IMPOSSIBLE_TRAVEL: ${data.colo} RTT ${checkRtt}ms < physical floor ${physicalFloor.toFixed(1)}ms`,
       confidence: 'HIGH'
     };
   }
 
-  // 4. Check: Headless Browser / Automation
-  // TCP connection is fast (local or optimized), but App rendering is suspiciously slow
-  // This indicates JS execution lag typical of Puppeteer/Selenium or slow botnet proxies
-  if (data.tcpRtt < 50 && data.appRtt > 800) {
-    return {
-      status: 'BOT',
-      reason: `HEADLESS_SIGNATURE: Low TCP (${data.tcpRtt}ms) + High App RTT (${data.appRtt}ms)`,
-      confidence: 'MEDIUM'
-    };
+  // 4. Check: Execution Profiling (App vs TCP RTT Ratio)
+  const appThreshold = isStarlink ? 2500 : 1000; 
+  
+  if (data.tcpRtt > 0 && data.tcpRtt < 100 && data.appRtt > appThreshold) {
+    const deltaRatio = data.appRtt / data.tcpRtt;
+    
+    if (deltaRatio > 40) {
+      return {
+        status: 'BOT',
+        reason: `HEADLESS_SIGNATURE: Ratio ${deltaRatio.toFixed(1)}x exceeding limit`,
+        confidence: 'MEDIUM'
+      };
+    }
   }
 
-  // 5. Check: Extreme App Latency (Potential DoS or Slowloris)
-  if (data.appRtt > 5000) {
+  // 5. Check: Extreme App Latency
+  const maxLeeway = isStarlink ? 10000 : 5000;
+  if (data.appRtt > maxLeeway) {
     return {
       status: 'ANOMALY',
-      reason: `EXCESSIVE_LATENCY: App RTT ${data.appRtt}ms exceeds threshold`,
+      reason: `EXCESSIVE_LATENCY: App RTT ${data.appRtt}ms`,
       confidence: 'LOW'
     };
   }
+  
+  // 6. Check: Fast Execution (cURL / Bot bypass)
+  // Our challenge has a 500ms setTimeout. If appRtt < 400ms, it means the client parsed the HTML and sent the token without waiting.
+  // Note: AppRtt might be 0 for inline API checks, so we only apply this if appRtt > 0.
+  // Wait, if it's an inline check, appRtt is explicitly passed as 0. 
+  // We need to differentiate between inline (0) and extremely fast appRtt (> 0 but < 400).
+  if (data.appRtt > 0 && data.appRtt < 400) {
+    return {
+      status: 'BOT',
+      reason: `FAST_EXECUTION: App RTT ${data.appRtt}ms < 400ms minimum timeout`,
+      confidence: 'HIGH'
+    };
+  }
 
-  // 6. Default: Clean
-  return { 
-    status: 'CLEAN', 
-    confidence: 'HIGH' 
-  };
-}
-
-/**
- * Calculates the physical minimum RTT for a given Colo code.
- * Useful for debugging or dynamic threshold adjustment.
- */
-export function getMinimumRtt(colo: string): number {
-  return PHYSICS_LIMITS[colo] || DEFAULT_MIN_RTT;
+  return { status: 'CLEAN', confidence: 'HIGH' };
 }

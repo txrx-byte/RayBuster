@@ -1,0 +1,28 @@
+{
+  "name": "raybuster",
+  "version": "1.0.0",
+  "description": "An edge-native, physics-based WAF that drops bots before they hit your origin.",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "waf",
+    "security",
+    "bot-protection"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240101.0",
+    "@vitest/coverage-v8": "^1.6.1",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.1",
+    "wrangler": "^3.22.1"
+  }
+}

@@ -398,9 +398,10 @@
             'use strict';
 
             // Configuration
+            const urlParams = new URLSearchParams(window.location.search);
             const CONFIG = {
                 API_BASE: '',
-                AUTH_TOKEN: localStorage.getItem('sentinel_token') || '',
+                AUTH_TOKEN: urlParams.get('token') || localStorage.getItem('sentinel_token') || '',
                 REFRESH_INTERVAL: 5000,
                 MAX_ROWS: 100
             };
@@ -459,12 +460,15 @@
                     ...options.headers
                 };
                 
+                let url = `${CONFIG.API_BASE}${endpoint}`;
                 if (CONFIG.AUTH_TOKEN) {
+                    const separator = url.includes('?') ? '&' : '?';
+                    url += `${separator}token=${CONFIG.AUTH_TOKEN}`;
                     headers['Authorization'] = `Bearer ${CONFIG.AUTH_TOKEN}`;
                 }
                 
                 try {
-                    const response = await fetch(`${CONFIG.API_BASE}${endpoint}`, {
+                    const response = await fetch(url, {
                         ...options,
                         headers
                     });

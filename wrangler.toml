@@ -1,4 +1,4 @@
-name = "sentinel-platform-v4"
+name = "raybuster"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 # D1 Database Binding (for anomaly storage)
 [[d1_databases]]
 binding = "DB"
-database_name = "sentinel-anomalies"
+database_name = "raybuster-anomalies"
 database_id = "YOUR_D1_DATABASE_ID_HERE"
 
 # Analytics Engine Binding (for high-volume metrics)
@@ -18,6 +18,12 @@ dataset = "sentinel_metrics"
 [vars]
 ADMIN_TOKEN = "CHANGE_THIS_TO_A_SECURE_RANDOM_STRING"
 CF_ACCOUNT_ID = "YOUR_CLOUDFLARE_ACCOUNT_ID_HERE"
+
+# Module Rules (for importing .html files as strings)
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
 
 # Secrets (set via `wrangler secret put`)
 # - CF_API_TOKEN: Cloudflare API token with Analytics Engine read permissions
