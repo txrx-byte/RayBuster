@@ -1,5 +1,13 @@
 # RayBuster 
 
+[![License: Unlicense](https://img.shields.io/badge/License-Unlicense-blue.svg)](https://unlicense.org/)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/txrx-byte/RayBuster)
+[![Coverage Status](https://img.shields.io/badge/coverage-27%25-red)](https://github.com/txrx-byte/RayBuster)
+[![Cloudflare](https://img.shields.io/badge/Cloudflare-Deployed-orange)](https://www.cloudflare.com/workers/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3.3-blue)](https://www.typescriptlang.org/)
+
+
+
 **A Zero-Trust, Edge-Native WAF that drops bots before they hit your origin using Deterministic Latency Fingerprinting.**
 
 Traditional enterprise Web Application Firewalls (WAFs) and bot-management tools rely on probabilistic AI, massive data lakes, and expensive behavioral heuristics. They cost thousands of dollars a month to guess if a user is a bot.
@@ -111,4 +119,4 @@ RayBuster is designed for high-availability and zero-trust security:
 ---
 
 ## 📜 License
-MIT License. Built for the modern, zero-trust web.
+Unlicense. Built for the modern, zero-trust web.
