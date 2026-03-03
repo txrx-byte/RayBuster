@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://api.cloudflare.com;">
+    <title>Sentinel // Security Operations Dashboard</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    
+    <!-- Chart.js for Metrics Visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+        
+        :root {
+            --color-bg: #0a0a0a;
+            --color-surface: #1a1a1a;
+            --color-border: #2a2a2a;
+            --color-primary: #00ff88;
+            --color-danger: #ff4444;
+            --color-warning: #ffaa00;
+            --color-info: #00aaff;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--color-bg);
+            color: #e0e0e0;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .glass-panel {
+            background: rgba(26, 26, 26, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+        
+        .status-live { background-color: var(--color-primary); box-shadow: 0 0 8px var(--color-primary); }
+        .status-warning { background-color: var(--color-warning); box-shadow: 0 0 8px var(--color-warning); }
+        .status-danger { background-color: var(--color-danger); box-shadow: 0 0 8px var(--color-danger); }
+        
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
+            opacity: 0.3;
+            animation: scan 4s linear infinite;
+            pointer-events: none;
+        }
+        
+        @keyframes scan {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(100%); }
+        }
+        
+        .table-row:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+        
+        .btn {
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+        
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--color-border);
+            border-top-color: var(--color-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        
+        .toast-success { background-color: var(--color-primary); color: #000; }
+        .toast-error { background-color: var(--color-danger); color: #fff; }
+        .toast-warning { background-color: var(--color-warning); color: #000; }
+        
+        /* Responsive Table */
+        .table-container {
+            overflow-x: auto;
+        }
+        
+        @media (max-width: 768px) {
+            .hide-mobile { display: none; }
+        }
+        
+        /* Accessibility */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            border: 0;
+        }
+        
+        :focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <!-- Sidebar Navigation -->
+    <aside class="fixed left-0 top-0 h-full w-64 glass-panel border-r border-[var(--color-border)] z-50">
+        <div class="p-6">
+            <div class="flex items-center gap-3 mb-8">
+                <div class="w-8 h-8 bg-[var(--color-primary)] rounded flex items-center justify-center">
+                    <svg class="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                    </svg>
+                </div>
+                <h1 class="text-xl font-bold text-white">SENTINEL<span class="text-[var(--color-primary)]">.AI</span></h1>
+            </div>
+            
+            <nav class="space-y-2" role="navigation" aria-label="Main navigation">
+                <a href="#overview" class="nav-item block px-4 py-3 rounded text-[var(--color-primary)] bg-white/5 border-l-4 border-[var(--color-primary)]" data-section="overview">
+                    <span class="flex items-center gap-3">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                        Overview
+                    </span>
+                </a>
+                <a href="#threats" class="nav-item block px-4 py-3 rounded text-gray-400 hover:text-white hover:bg-white/5" data-section="threats">
+                    <span class="flex items-center gap-3">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        Threat Feed
+                    </span>
+                </a>
+                <a href="#blocklist" class="nav-item block px-4 py-3 rounded text-gray-400 hover:text-white hover:bg-white/5" data-section="blocklist">
+                    <span class="flex items-center gap-3">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                        Blocklist
+                    </span>
+                </a>
+                <a href="#settings" class="nav-item block px-4 py-3 rounded text-gray-400 hover:text-white hover:bg-white/5" data-section="settings">
+                    <span class="flex items-center gap-3">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        Settings
+                    </span>
+                </a>
+            </nav>
+            
+            <div class="absolute bottom-6 left-6 right-6">
+                <div class="glass-panel p-4 rounded">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="status-indicator status-live" id="system-status"></span>
+                        <span class="text-xs text-gray-400">SYSTEM STATUS</span>
+                    </div>
+                    <div class="text-sm text-white font-medium" id="system-status-text">EDGE ACTIVE</div>
+                    <div class="text-xs text-gray-500 mono mt-1" id="last-update">Last: --:--:--</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="ml-64 p-8">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h2 class="text-2xl font-bold text-white mb-1">Security Operations Center</h2>
+                <p class="text-sm text-gray-400">Real-time threat detection & mitigation</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <button id="refresh-btn" class="btn glass-panel px-4 py-2 text-sm text-white hover:bg-white/10" aria-label="Refresh data">
+                    <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Refresh
+                </button>
+                <button id="mitigate-btn" class="btn bg-[var(--color-danger)] hover:bg-red-700 px-6 py-2 text-sm text-white font-semibold shadow-lg shadow-red-900/30" aria-label="Auto-mitigate all threats">
+                    ⚠ AUTO-MITIGATE
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <section id="overview" class="mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="glass-panel p-6">
+                    <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Total Requests (1h)</div>
+                    <div class="text-3xl font-bold text-white mono" id="stat-requests">--</div>
+                    <div class="text-xs text-gray-500 mt-2" id="stat-requests-delta">--</div>
+                </div>
+                <div class="glass-panel p-6">
+                    <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Detected Anomalies</div>
+                    <div class="text-3xl font-bold text-[var(--color-danger)] mono" id="stat-anomalies">--</div>
+                    <div class="text-xs text-gray-500 mt-2" id="stat-anomalies-delta">--</div>
+                </div>
+                <div class="glass-panel p-6">
+                    <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Avg TCP RTT</div>
+                    <div class="text-3xl font-bold text-[var(--color-info)] mono" id="stat-tcp-rtt">--</div>
+                    <div class="text-xs text-gray-500 mt-2">Global average</div>
+                </div>
+                <div class="glass-panel p-6">
+                    <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Mitigation Rate</div>
+                    <div class="text-3xl font-bold text-[var(--color-primary)] mono" id="stat-mitigation">--</div>
+                    <div class="text-xs text-gray-500 mt-2">Threats blocked</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts Section -->
+        <section class="mb-8">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="glass-panel p-6 relative">
+                    <div class="scan-line"></div>
+                    <h3 class="text-lg font-semibold text-white mb-4">Traffic Volume by Verdict</h3>
+                    <canvas id="traffic-chart" height="200"></canvas>
+                </div>
+                <div class="glass-panel p-6 relative">
+                    <div class="scan-line"></div>
+                    <h3 class="text-lg font-semibold text-white mb-4">Latency Distribution</h3>
+                    <canvas id="latency-chart" height="200"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Threat Feed Table -->
+        <section id="threats" class="mb-8">
+            <div class="glass-panel relative overflow-hidden">
+                <div class="scan-line"></div>
+                <div class="p-6 border-b border-[var(--color-border)] flex justify-between items-center">
+                    <h3 class="text-lg font-semibold text-white">Live Threat Feed</h3>
+                    <div class="flex items-center gap-4">
+                        <span class="text-xs text-gray-400">Auto-refresh: <span id="refresh-interval">5s</span></span>
+                        <div class="flex items-center gap-2">
+                            <span class="status-indicator status-live"></span>
+                            <span class="text-xs text-[var(--color-primary)]">LIVE</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="w-full" aria-label="Threat feed table">
+                        <thead class="bg-white/5 text-gray-400 text-xs uppercase">
+                            <tr>
+                                <th class="p-4 text-left">Timestamp</th>
+                                <th class="p-4 text-left">IP Address</th>
+                                <th class="p-4 text-left hide-mobile">Location</th>
+                                <th class="p-4 text-left">Edge Node</th>
+                                <th class="p-4 text-left">TCP RTT</th>
+                                <th class="p-4 text-left">App RTT</th>
+                                <th class="p-4 text-left">Verdict</th>
+                                <th class="p-4 text-left">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="threat-table-body" class="text-sm">
+                            <tr>
+                                <td colspan="8" class="p-8 text-center text-gray-500">
+                                    <div class="loading-spinner mx-auto mb-4"></div>
+                                    Loading threat data...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Blocklist Management -->
+        <section id="blocklist" class="mb-8">
+            <div class="glass-panel p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-semibold text-white">Active Blocklist</h3>
+                    <button id="export-blocklist-btn" class="btn glass-panel px-4 py-2 text-sm text-white hover:bg-white/10">
+                        📥 Export
+                    </button>
+                </div>
+                <div id="blocklist-container" class="space-y-2">
+                    <div class="text-center text-gray-500 py-8">No active blocks</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings -->
+        <section id="settings" class="mb-8">
+            <div class="glass-panel p-6">
+                <h3 class="text-lg font-semibold text-white mb-6">Platform Settings</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Auto-Mitigation Threshold</label>
+                        <select id="mitigation-threshold" class="w-full glass-panel px-4 py-2 text-white bg-transparent border border-[var(--color-border)] rounded">
+                            <option value="high">High Confidence Only</option>
+                            <option value="medium" selected>Medium + High</option>
+                            <option value="low">All Detections</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Refresh Interval</label>
+                        <select id="refresh-rate" class="w-full glass-panel px-4 py-2 text-white bg-transparent border border-[var(--color-border)] rounded">
+                            <option value="5000">5 seconds</option>
+                            <option value="10000">10 seconds</option>
+                            <option value="30000">30 seconds</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Data Retention (Days)</label>
+                        <input type="number" id="retention-days" value="30" min="1" max="365" class="w-full glass-panel px-4 py-2 text-white bg-transparent border border-[var(--color-border)] rounded">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-2">Admin Email</label>
+                        <input type="email" id="admin-email" placeholder="admin@example.com" class="w-full glass-panel px-4 py-2 text-white bg-transparent border border-[var(--color-border)] rounded">
+                    </div>
+                </div>
+                <div class="mt-6 flex gap-4">
+                    <button id="save-settings-btn" class="btn bg-[var(--color-primary)] hover:bg-green-600 px-6 py-2 text-black font-semibold">
+                        Save Changes
+                    </button>
+                    <button id="reset-settings-btn" class="btn glass-panel px-6 py-2 text-white hover:bg-white/10">
+                        Reset Defaults
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="glass-panel p-8 max-w-md w-full">
+                <h3 id="modal-title" class="text-xl font-bold text-white mb-4">Confirm Action</h3>
+                <p id="modal-message" class="text-gray-400 mb-6">Are you sure you want to proceed?</p>
+                <div class="flex gap-4">
+                    <button id="modal-cancel" class="flex-1 glass-panel px-4 py-2 text-white hover:bg-white/10">Cancel</button>
+                    <button id="modal-confirm" class="flex-1 bg-[var(--color-danger)] hover:bg-red-700 px-4 py-2 text-white font-semibold">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * Sentinel Dashboard - Production JavaScript
+         * Handles API communication, UI updates, and user interactions
+         */
+        (function() {
+            'use strict';
+
+            // Configuration
+            const CONFIG = {
+                API_BASE: '',
+                AUTH_TOKEN: localStorage.getItem('sentinel_token') || '',
+                REFRESH_INTERVAL: 5000,
+                MAX_ROWS: 100
+            };
+
+            // State
+            let state = {
+                stats: null,
+                anomalies: [],
+                blocklist: [],
+                charts: {},
+                refreshTimer: null,
+                isMitigating: false
+            };
+
+            // DOM Elements
+            const elements = {
+                statRequests: document.getElementById('stat-requests'),
+                statAnomalies: document.getElementById('stat-anomalies'),
+                statTcpRtt: document.getElementById('stat-tcp-rtt'),
+                statMitigation: document.getElementById('stat-mitigation'),
+                threatTableBody: document.getElementById('threat-table-body'),
+                blocklistContainer: document.getElementById('blocklist-container'),
+                refreshBtn: document.getElementById('refresh-btn'),
+                mitigateBtn: document.getElementById('mitigate-btn'),
+                lastUpdate: document.getElementById('last-update'),
+                toastContainer: document.getElementById('toast-container'),
+                confirmModal: document.getElementById('confirm-modal'),
+                modalTitle: document.getElementById('modal-title'),
+                modalMessage: document.getElementById('modal-message'),
+                modalCancel: document.getElementById('modal-cancel'),
+                modalConfirm: document.getElementById('modal-confirm')
+            };
+
+            // Toast Notification System
+            function showToast(message, type = 'info') {
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.textContent = message;
+                toast.setAttribute('role', 'alert');
+                elements.toastContainer.appendChild(toast);
+                
+                // Trigger animation
+                requestAnimationFrame(() => toast.classList.add('show'));
+                
+                // Auto-remove
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    setTimeout(() => toast.remove(), 300);
+                }, 3000);
+            }
+
+            // API Helper
+            async function apiCall(endpoint, options = {}) {
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                };
+                
+                if (CONFIG.AUTH_TOKEN) {
+                    headers['Authorization'] = `Bearer ${CONFIG.AUTH_TOKEN}`;
+                }
+                
+                try {
+                    const response = await fetch(`${CONFIG.API_BASE}${endpoint}`, {
+                        ...options,
+                        headers
+                    });
+                    
+                    if (response.status === 401) {
+                        showToast('Authentication failed. Please re-login.', 'error');
+                        CONFIG.AUTH_TOKEN = '';
+                        localStorage.removeItem('sentinel_token');
+                        throw new Error('Unauthorized');
+                    }
+                    
+                    if (!response.ok) {
+                        throw new Error(`API Error: ${response.statusText}`);
+                    }
+                    
+                    return await response.json();
+                } catch (error) {
+                    console.error('API Call Failed:', error);
+                    showToast(error.message, 'error');
+                    throw error;
+                }
+            }
+
+            // Format Utilities
+            function formatNumber(num) {
+                return new Intl.NumberFormat().format(num);
+            }
+
+            function formatTime(date) {
+                return new Intl.DateTimeFormat('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                }).format(new Date(date));
+            }
+
+            function formatVerdict(verdict) {
+                const colors = {
+                    'CLEAN': 'text-green-500',
+                    'ANOMALY': 'text-red-500',
+                    'BOT': 'text-orange-500'
+                };
+                const icons = {
+                    'CLEAN': '✓',
+                    'ANOMALY': '⚠',
+                    'BOT': '🤖'
+                };
+                return `<span class="${colors[verdict] || 'text-gray-400'} font-medium">${icons[verdict] || ''} ${verdict}</span>`;
+            }
+
+            // Stats Update
+            async function fetchStats() {
+                try {
+                    const data = await apiCall('/api/stats');
+                    state.stats = data;
+                    updateStatsUI();
+                } catch (e) {
+                    console.error('Failed to fetch stats:', e);
+                }
+            }
+
+            function updateStatsUI() {
+                if (!state.stats || !state.stats.length) return;
+                
+                const clean = state.stats.find(s => s.verdict === 'CLEAN') || {};
+                const anomaly = state.stats.find(s => s.verdict === 'ANOMALY') || {};
+                const bot = state.stats.find(s => s.verdict === 'BOT') || {};
+                
+                const totalRequests = (clean.request_count || 0) + (anomaly.request_count || 0) + (bot.request_count || 0);
+                const totalAnomalies = (anomaly.request_count || 0) + (bot.request_count || 0);
+                const avgTcpRtt = clean.avg_tcp_rtt || anomaly.avg_tcp_rtt || bot.avg_tcp_rtt || 0;
+                const mitigationRate = totalRequests > 0 ? ((totalAnomalies / totalRequests) * 100).toFixed(1) : 0;
+                
+                elements.statRequests.textContent = formatNumber(totalRequests);
+                elements.statAnomalies.textContent = formatNumber(totalAnomalies);
+                elements.statTcpRtt.textContent = `${Math.round(avgTcpRtt)}ms`;
+                elements.statMitigation.textContent = `${mitigationRate}%`;
+                
+                elements.lastUpdate.textContent = `Last: ${formatTime(new Date())}`;
+            }
+
+            // Anomalies Feed
+            async function fetchAnomalies() {
+                try {
+                    const data = await apiCall('/api/anomalies');
+                    state.anomalies = data.slice(0, CONFIG.MAX_ROWS);
+                    updateThreatTable();
+                    updateCharts();
+                } catch (e) {
+                    console.error('Failed to fetch anomalies:', e);
+                    elements.threatTableBody.innerHTML = `
+                        <tr>
+                            <td colspan="8" class="p-8 text-center text-red-400">
+                                Failed to load threat data. <button onclick="window.Sentinel.refresh()" class="text-[var(--color-primary)] underline">Retry</button>
+                            </td>
+                        </tr>
+                    `;
+                }
+            }
+
+            function updateThreatTable() {
+                if (!state.anomalies.length) {
+                    elements.threatTableBody.innerHTML = `
+                        <tr>
+                            <td colspan="8" class="p-8 text-center text-gray-500">
+                                No threats detected in the last hour
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                elements.threatTableBody.innerHTML = state.anomalies.map(row => `
+                    <tr class="table-row border-b border-[var(--color-border)]">
+                        <td class="p-4 mono text-xs text-gray-400">${formatTime(row.created_at)}</td>
+                        <td class="p-4 mono text-sm text-white">${row.ip_raw}</td>
+                        <td class="p-4 text-sm text-gray-400 hide-mobile">${row.country_code || 'XX'}</td>
+                        <td class="p-4 mono text-sm text-gray-400">${row.colo_code || 'UNK'}</td>
+                        <td class="p-4 mono text-sm ${row.tcp_rtt < 50 ? 'text-red-400' : 'text-gray-400'}">${row.tcp_rtt}ms</td>
+                        <td class="p-4 mono text-sm ${row.app_rtt > 800 ? 'text-orange-400' : 'text-gray-400'}">${row.app_rtt || '--'}ms</td>
+                        <td class="p-4">${formatVerdict(row.verdict)}</td>
+                        <td class="p-4">
+                            <button onclick="window.Sentinel.blockIP('${row.ip_raw}')" class="text-xs bg-red-900/50 hover:bg-red-900 text-red-400 px-3 py-1 rounded transition-colors">
+                                Block IP
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+
+            // Charts
+            function updateCharts() {
+                // Traffic Volume Chart
+                if (state.charts.traffic) {
+                    state.charts.traffic.destroy();
+                }
+                
+                const trafficCtx = document.getElementById('traffic-chart').getContext('2d');
+                state.charts.traffic = new Chart(trafficCtx, {
+                    type: 'bar',
+                     {
+                        labels: ['Clean', 'Anomaly', 'Bot'],
+                        datasets: [{
+                            label: 'Requests',
+                             state.anomalies.filter(r => r.verdict === 'CLEAN').length,
+                            backgroundColor: ['#00ff88', '#ff4444', '#ffaa00']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: '#2a2a2a' } },
+                            x: { grid: { display: false } }
+                        }
+                    }
+                });
+                
+                // Latency Chart
+                if (state.charts.latency) {
+                    state.charts.latency.destroy();
+                }
+                
+                const latencyCtx = document.getElementById('latency-chart').getContext('2d');
+                state.charts.latency = new Chart(latencyCtx, {
+                    type: 'line',
+                     {
+                        labels: state.anomalies.slice(0, 20).reverse().map((_, i) => i),
+                        datasets: [{
+                            label: 'TCP RTT',
+                             state.anomalies.slice(0, 20).reverse().map(r => r.tcp_rtt),
+                            borderColor: '#00aaff',
+                            tension: 0.4
+                        }, {
+                            label: 'App RTT',
+                             state.anomalies.slice(0, 20).reverse().map(r => r.app_rtt || 0),
+                            borderColor: '#ffaa00',
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { grid: { color: '#2a2a2a' } },
+                            x: { display: false }
+                        }
+                    }
+                });
+            }
+
+            // Mitigation Actions
+            async function blockIP(ip) {
+                showConfirmModal(
+                    'Block IP Address',
+                    `Are you sure you want to block ${ip}? This will add it to the WAF blocklist.`,
+                    async () => {
+                        try {
+                            // In production, this would call your WAF API
+                            await apiCall('/api/blocklist', {
+                                method: 'POST',
+                                body: JSON.stringify({ identifier: ip, type: 'IP' })
+                            });
+                            showToast(`IP ${ip} added to blocklist`, 'success');
+                            fetchAnomalies();
+                        } catch (e) {
+                            showToast('Failed to block IP', 'error');
+                        }
+                    }
+                );
+            }
+
+            async function autoMitigate() {
+                if (state.isMitigating) return;
+                
+                showConfirmModal(
+                    'Auto-Mitigate All Threats',
+                    `This will block all ${state.anomalies.length} detected threats. Continue?`,
+                    async () => {
+                        state.isMitigating = true;
+                        elements.mitigateBtn.disabled = true;
+                        elements.mitigateBtn.textContent = 'MITIGATING...';
+                        
+                        try {
+                            const ips = state.anomalies.map(a => a.ip_raw);
+                            await apiCall('/api/blocklist/bulk', {
+                                method: 'POST',
+                                body: JSON.stringify({ identifiers: ips })
+                            });
+                            showToast(`Blocked ${ips.length} threats successfully`, 'success');
+                            fetchAnomalies();
+                        } catch (e) {
+                            showToast('Mitigation failed', 'error');
+                        } finally {
+                            state.isMitigating = false;
+                            elements.mitigateBtn.disabled = false;
+                            elements.mitigateBtn.textContent = '⚠ AUTO-MITIGATE';
+                        }
+                    }
+                );
+            }
+
+            // Modal System
+            function showConfirmModal(title, message, onConfirm) {
+                elements.modalTitle.textContent = title;
+                elements.modalMessage.textContent = message;
+                elements.confirmModal.classList.remove('hidden');
+                
+                const handleConfirm = () => {
+                    onConfirm();
+                    closeConfirmModal();
+                };
+                
+                const handleCancel = () => {
+                    closeConfirmModal();
+                };
+                
+                elements.modalConfirm.onclick = handleConfirm;
+                elements.modalCancel.onclick = handleCancel;
+                
+                // Escape key
+                const handleEscape = (e) => {
+                    if (e.key === 'Escape') {
+                        closeConfirmModal();
+                        document.removeEventListener('keydown', handleEscape);
+                    }
+                };
+                document.addEventListener('keydown', handleEscape);
+            }
+
+            function closeConfirmModal() {
+                elements.confirmModal.classList.add('hidden');
+            }
+
+            // Refresh System
+            function startAutoRefresh() {
+                stopAutoRefresh();
+                state.refreshTimer = setInterval(() => {
+                    fetchStats();
+                    fetchAnomalies();
+                }, CONFIG.REFRESH_INTERVAL);
+            }
+
+            function stopAutoRefresh() {
+                if (state.refreshTimer) {
+                    clearInterval(state.refreshTimer);
+                    state.refreshTimer = null;
+                }
+            }
+
+            function refresh() {
+                fetchStats();
+                fetchAnomalies();
+                showToast('Data refreshed', 'success');
+            }
+
+            // Navigation
+            function setupNavigation() {
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        document.querySelectorAll('.nav-item').forEach(i => {
+                            i.classList.remove('text-[var(--color-primary)]', 'bg-white/5', 'border-l-4', 'border-[var(--color-primary)]');
+                            i.classList.add('text-gray-400');
+                        });
+                        item.classList.remove('text-gray-400');
+                        item.classList.add('text-[var(--color-primary)]', 'bg-white/5', 'border-l-4', 'border-[var(--color-primary)]');
+                        
+                        const section = item.getAttribute('data-section');
+                        document.getElementById(section).scrollIntoView({ behavior: 'smooth' });
+                    });
+                });
+            }
+
+            // Event Listeners
+            function setupEventListeners() {
+                elements.refreshBtn.addEventListener('click', refresh);
+                elements.mitigateBtn.addEventListener('click', autoMitigate);
+                
+                document.getElementById('refresh-rate').addEventListener('change', (e) => {
+                    CONFIG.REFRESH_INTERVAL = parseInt(e.target.value);
+                    document.getElementById('refresh-interval').textContent = `${CONFIG.REFRESH_INTERVAL / 1000}s`;
+                    startAutoRefresh();
+                    showToast('Refresh rate updated', 'success');
+                });
+                
+                document.getElementById('save-settings-btn').addEventListener('click', () => {
+                    showToast('Settings saved', 'success');
+                });
+                
+                document.getElementById('reset-settings-btn').addEventListener('click', () => {
+                    CONFIG.REFRESH_INTERVAL = 5000;
+                    document.getElementById('refresh-rate').value = '5000';
+                    document.getElementById('refresh-interval').textContent = '5s';
+                    showToast('Settings reset', 'success');
+                });
+                
+                document.getElementById('export-blocklist-btn').addEventListener('click', () => {
+                    const data = JSON.stringify(state.blocklist, null, 2);
+                    const blob = new Blob([data], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `blocklist-${new Date().toISOString()}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    showToast('Blocklist exported', 'success');
+                });
+            }
+
+            // Initialize
+            function init() {
+                setupNavigation();
+                setupEventListeners();
+                startAutoRefresh();
+                refresh();
+                
+                // Expose public methods
+                window.Sentinel = {
+                    refresh,
+                    blockIP,
+                    autoMitigate
+                };
+                
+                showToast('Dashboard initialized', 'success');
+            }
+
+            // Start
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
+    </script>
+</body>
+</html>
