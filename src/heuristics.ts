@@ -1,22 +1,6 @@
 // src/heuristics.ts
 import colos from './colos_slim.json';
-
-export interface TelemetryData {
-  ip: string;
-  country: string;
-  colo: string;
-  tcpRtt: number;
-  appRtt: number;
-  asn?: number;
-  lat?: number;
-  lon?: number;
-}
-
-export interface Verdict {
-  status: 'CLEAN' | 'ANOMALY' | 'BOT';
-  reason?: string;
-  confidence?: 'LOW' | 'MEDIUM' | 'HIGH';
-}
+import { TelemetryData, Verdict } from './types';
 
 // Known High-Latency Networks (Starlink, Mobile Carriers with high jitter)
 const HIGH_LATENCY_ASNS = new Set([
@@ -69,7 +53,7 @@ export function analyzePhysics(data: TelemetryData): Verdict {
   
   // If we have both the client's GeoIP coordinates and the Colo's physical coordinates
   if (data.lat !== undefined && data.lon !== undefined) {
-    const coloCoords = (colos as Record<string, [number, number]>)[data.colo];
+    const coloCoords = (colos as unknown as Record<string, [number, number]>)[data.colo];
     if (coloCoords) {
       const [coloLat, coloLon] = coloCoords;
       const distanceKm = haversine(data.lat, data.lon, coloLat, coloLon);
